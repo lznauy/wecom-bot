@@ -7,6 +7,22 @@ set -e
 
 REPO="lznauy/wecom-bot"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+# 网络受限（GitHub 下载 403/超时）时可指定加速前缀，例如：
+#   GH_PROXY=https://gh-proxy.com sh install.sh
+GH_PROXY="${GH_PROXY:-}"
+
+# fetch <url> <输出文件>：下载，失败时报出实际 URL 与 HTTP 码。
+fetch() {
+    echo "下载 ${GH_PROXY}${1}"
+    code="$(curl -fsSL --retry 2 -w '%{http_code}' -o "$2" "${GH_PROXY}${1}" 2>/dev/null || echo failed)"
+    if [ "$code" != "200" ] && [ "$code" != "302" ]; then
+        echo "错误：下载失败 (HTTP $code)" >&2
+        echo "  URL: ${GH_PROXY}${1}" >&2
+        echo "  提示：网络访问 GitHub 受限时，可加加速前缀重试：" >&2
+        echo "    GH_PROXY=<加速站前缀> sh install.sh" >&2
+        exit 1
+    fi
+}
 
 # ---- 识别平台 ----
 os="$(uname -s)"
@@ -31,6 +47,7 @@ else
     echo "查询最新版本..."
     version="$(curl -fsSL --max-time 10 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' || true)"
 fi
+
 if [ -n "$version" ]; then
     echo "安装 wecom-bot $version ($os_name-$arch_name)"
     base_url="https://github.com/${REPO}/releases/download/${version}"
@@ -44,12 +61,11 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 asset="wecom-bot-${os_name}-${arch_name}"
-echo "下载 ${base_url}/${asset}"
-curl -fsSL "${base_url}/${asset}" -o "$tmpdir/wecom-bot"
+fetch "${base_url}/${asset}" "$tmpdir/wecom-bot"
 
 if [ -n "$version" ]; then
     echo "校验 SHA256..."
-    if ! curl -fsSL "${base_url}/SHA256SUMS" -o "$tmpdir/SHA256SUMS" 2>/dev/null; then
+    if ! curl -fsSL --retry 2 "${GH_PROXY}${base_url}/SHA256SUMS" -o "$tmpdir/SHA256SUMS" 2>/dev/null; then
         echo "警告：无法下载 SHA256SUMS，跳过校验"
     else
         expected="$(grep "${asset}\$" "$tmpdir/SHA256SUMS" | awk '{print $1}')"
