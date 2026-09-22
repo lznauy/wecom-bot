@@ -23,41 +23,48 @@ case "$arch" in
 esac
 
 # ---- 确定版本 ----
+# 下载一律走 releases/latest/download/<资产名>（不走 GitHub API，不受匿名限流影响）；
+# API 仅用于获取版本号用于显示与 SHA256SUMS 校验，失败则跳过校验。
 if [ -n "$1" ]; then
     version="$1"
 else
     echo "查询最新版本..."
-    version="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')"
-    [ -n "$version" ] || { echo "错误：无法获取最新版本号" >&2; exit 1; }
+    version="$(curl -fsSL --max-time 10 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' || true)"
 fi
-echo "安装 wecom-bot $version ($os_name-$arch_name)"
+if [ -n "$version" ]; then
+    echo "安装 wecom-bot $version ($os_name-$arch_name)"
+    base_url="https://github.com/${REPO}/releases/download/${version}"
+else
+    echo "无法获取版本号（API 限流或无网络访问 GitHub API），直接下载最新版 ($os_name-$arch_name)"
+    base_url="https://github.com/${REPO}/releases/latest/download"
+fi
 
 # ---- 下载并校验 ----
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 asset="wecom-bot-${os_name}-${arch_name}"
-binary_url="https://github.com/${REPO}/releases/download/${version}/${asset}"
-echo "下载 $binary_url"
-curl -fsSL "$binary_url" -o "$tmpdir/wecom-bot"
+echo "下载 ${base_url}/${asset}"
+curl -fsSL "${base_url}/${asset}" -o "$tmpdir/wecom-bot"
 
-checksum_url="https://github.com/${REPO}/releases/download/${version}/SHA256SUMS"
-echo "校验 SHA256..."
-if curl -fsSL "$checksum_url" -o "$tmpdir/SHA256SUMS" 2>/dev/null; then
-    expected="$(grep "${asset}\$" "$tmpdir/SHA256SUMS" | awk '{print $1}')"
-    if [ -n "$expected" ]; then
-        if command -v sha256sum >/dev/null 2>&1; then
-            actual="$(sha256sum "$tmpdir/wecom-bot" | awk '{print $1}')"
-        else
-            actual="$(shasum -a 256 "$tmpdir/wecom-bot" | awk '{print $1}')"
-        fi
-        [ "$actual" = "$expected" ] || { echo "错误：校验和不匹配 (期望 $expected，实际 $actual)" >&2; exit 1; }
-        echo "校验通过"
+if [ -n "$version" ]; then
+    echo "校验 SHA256..."
+    if ! curl -fsSL "${base_url}/SHA256SUMS" -o "$tmpdir/SHA256SUMS" 2>/dev/null; then
+        echo "警告：无法下载 SHA256SUMS，跳过校验"
     else
-        echo "警告：SHA256SUMS 中未找到对应条目，跳过校验"
+        expected="$(grep "${asset}\$" "$tmpdir/SHA256SUMS" | awk '{print $1}')"
+        if [ -z "$expected" ]; then
+            echo "警告：SHA256SUMS 中未找到对应条目，跳过校验"
+        else
+            if command -v sha256sum >/dev/null 2>&1; then
+                actual="$(sha256sum "$tmpdir/wecom-bot" | awk '{print $1}')"
+            else
+                actual="$(shasum -a 256 "$tmpdir/wecom-bot" | awk '{print $1}')"
+            fi
+            [ "$actual" = "$expected" ] || { echo "错误：校验和不匹配 (期望 $expected，实际 $actual)" >&2; exit 1; }
+            echo "校验通过"
+        fi
     fi
-else
-    echo "警告：无法下载 SHA256SUMS，跳过校验"
 fi
 
 # ---- 安装 ----
