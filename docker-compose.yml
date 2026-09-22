@@ -1,0 +1,16 @@
+services:
+  wecom-bot:
+    build: .
+    container_name: wecom-bot
+    restart: unless-stopped
+    environment:
+      # 企业微信机器人凭证（也可用 .env 文件注入）
+      WECOM_BOT_ID: ${WECOM_BOT_ID}
+      WECOM_BOT_SECRET: ${WECOM_BOT_SECRET}
+      # 每群独立工作区的父目录
+      WECOM_WORKDIR: /app/workspace
+    volumes:
+      # NekoCode 源码（只读），首次启动自动构建 nekocode-tui
+      - ../NekoCode:/opt/NekoCode:ro
+      # 工作区：每个群一个子目录，如 /app/workspace/<chatid>/
+      - ./workspace:/app/workspace
