@@ -176,12 +176,21 @@ func (r *Router) workDir(chatID string) string {
 	return dir
 }
 
-// dirFor 返回会话的工作目录（不创建）：共享工作区优先，其次按群子目录。
+// dirFor 返回会话的工作目录（不创建）：共享工作区优先，其次按群子目录；
+// 都未配置时回退进程当前目录（与 sessionFor 的 opts.Dir 为空继承 cwd 一致）。
 func (r *Router) dirFor(chatID string) string {
 	if r.opts.SharedWorkDir != "" {
 		return r.opts.SharedWorkDir
 	}
-	return r.workDir(chatID)
+	if dir := r.workDir(chatID); dir != "" {
+		return dir
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Printf("[router] getwd: %v", err)
+		return "."
+	}
+	return cwd
 }
 
 // parseFileCommand 解析 "/file [路径]" 命令（@机器人 前缀已在 Dispatch 剥离，
@@ -201,10 +210,6 @@ func parseFileCommand(text string) (arg string, ok bool) {
 // sendFile 把工作区文件上传并发送到会话。
 func (r *Router) sendFile(ctx context.Context, sender *wecom.Client, reqID, chatID, arg string) {
 	base := r.dirFor(chatID)
-	if base == "" {
-		_ = sender.ReplyText(ctx, reqID, "未配置工作目录，无法发送文件。")
-		return
-	}
 	if arg == "" {
 		_ = sender.ReplyText(ctx, reqID, "工作目录: "+base)
 		return
