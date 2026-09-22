@@ -73,6 +73,18 @@ docker-compose 挂载：
 - `../NekoCode:/opt/NekoCode:ro` — NekoCode 源码，用于构建 CLI
 - `./workspace:/app/workspace` — 工作区持久化目录
 
+## 安装
+
+一键安装最新 Release 的二进制（自动识别平台并校验 SHA256）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lznauy/wecom-bot/main/install.sh | sh
+# 指定版本
+curl -fsSL https://raw.githubusercontent.com/lznauy/wecom-bot/main/install.sh | sh -s v0.1.0
+# 自定义安装目录
+INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/lznauy/wecom-bot/main/install.sh | sh
+```
+
 ## 本地运行
 
 ```bash
